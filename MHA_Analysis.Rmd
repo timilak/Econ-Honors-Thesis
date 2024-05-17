@@ -1,0 +1,1385 @@
+---
+title: "Data"
+author: "Timila Kulkarni"
+date: '2024-01-18'
+output: html_document
+---
+
+```{r setup}
+# clear objects
+rm(list=ls())
+
+#install.packages("stargazer")
+
+# load packages
+library(tidyverse)
+library(stargazer)
+```
+
+
+```{r data}
+## blocks
+blocks <- read.csv("2020_Census_Blocks_-_Seattle.csv")
+
+## ZHVI
+ZHVI <- read.csv("ZHVI.csv")
+ZHVI <-ZHVI %>%
+  rename_with(str_to_title)
+#head(ZHVI)
+#summary(ZHVI)
+
+## ZORI
+ZORI <- read.csv("ZORI.csv")
+ZORI <-ZORI %>%
+  rename_with(str_to_title)
+#head(ZORI)
+#summary(ZORI)
+
+## MHA data
+MHA_raw <- read.csv("MHA_data.csv")
+MHA_raw <-MHA_raw %>%
+  rename_with(str_to_title)
+names(MHA_raw) <- lapply(MHA_raw[1, ], as.character)
+MHA_raw <- MHA_raw[-1,] 
+#head(MHA_raw)
+#summary(MHA_raw)
+#stargazer(MHA_raw, type="text", title="MHA Summary")
+
+## Tract data
+tracts <- read.table("tab20_zcta520_tract20_natl.txt", header = FALSE, sep = "|", dec = ".") 
+tracts <- as.data.frame(tracts)
+tracts <-tracts %>%
+  rename_with(str_to_title)
+names(tracts) <- lapply(tracts[1, ], as.character)
+tracts <- tracts[-1,]
+
+tracts <- tail(tracts, -3269)
+
+## only want blocks for Seattle
+sea_tracts <- tracts[tracts$GEOID_ZCTA5_20 %in% c("98101","98102","98103","98104","98105","98106","98107","98108","98109","98112","98115","98116","98117","98118","98119","98121","98122","98125","98126","98133","98134","98136","98144","98155","98164","98177","98199"),] 
+
+```
+
+```{r clean}
+# Seattle data
+## Housing
+sea_hous <- ZHVI[ZHVI$City %in% c("Seattle","Shoreline"),]
+#head(sea_hous)
+
+## Rent
+sea_rent <- ZORI[ZORI$City %in% c("Seattle","Shoreline"),]
+#head(sea_rent)
+
+
+# Other Cities
+## Tacoma
+### Housing
+tac_hous <- ZHVI[ZHVI$City %in% "Tacoma",]
+
+### Rent
+tac_rent <- ZORI[ZORI$City %in% "Tacoma",]
+
+
+## Spokane
+### Housing
+spo_hous <- ZHVI %>% filter(City=="Spokane Valley"|City=="Spokane")
+
+spo_rent <- ZORI %>% filter(City=="Spokane Valley"|City=="Spokane")
+
+
+## Denver
+### Housing
+den_hous <- ZHVI %>% filter(City=="Denver")
+
+### Rent
+den_rent <- ZORI %>% filter(City=="Denver")
+
+## San Francisco
+### Housing
+sfo_hous <- ZHVI %>% filter(City=="San Francisco")
+
+### Rent
+sfo_rent <- ZORI %>% filter(City=="San Francisco")
+
+## San Jose
+### Housing
+sjc_hous <- ZHVI %>% filter(City=="San Jose")
+
+sjc_rent <- ZORI %>% filter(City=="San Jose")
+
+
+## Fresno
+### Housing
+fre_hous <- ZHVI %>% filter(City=="Fresno")
+
+fre_rent <- ZORI %>% filter(City=="Fresno")
+
+
+## Las Vegas
+### Housing
+las_hous <- ZHVI %>% filter(City=="Las Vegas")
+
+### Rent
+las_rent <- ZORI %>% filter(City=="Las Vegas")
+
+
+## Phoenix
+### Housing
+phx_hous <- ZHVI %>% filter(City=="Phoenix")
+
+### Rent
+phx_rent <- ZORI %>% filter(City=="Phoenix")
+
+
+## Sacramento
+### Housing
+sac_hous <- ZHVI %>% filter(City=="Sacramento")
+
+### Rent
+sac_rent <- ZORI %>% filter(City=="Sacramento")
+
+
+## LA
+### Housing
+lax_hous <- ZHVI %>% filter(City=="Los Angeles")
+
+### Rent
+lax_rent <- ZORI %>% filter(City=="Los Angeles")
+
+```
+
+### Map blocks to tracts, tracts to ZIP
+
+```{r}
+block_counts <- table(blocks$TRACT_LABEL)
+block_counts <- as.data.frame(block_counts)
+block_counts <- block_counts %>%
+  rename(NAMELSAD_TRACT_20 = Var1,
+         COUNT = Freq)
+
+sea_tracts$NAMELSAD_TRACT_20 <- str_replace(sea_tracts$NAMELSAD_TRACT_20, "Census Tract ", "")
+
+sea_tracts <- merge(sea_tracts, block_counts, by="NAMELSAD_TRACT_20")
+
+sea_tracts_counts <- aggregate(COUNT~GEOID_ZCTA5_20,sea_tracts,sum)
+sea_tracts_counts <- sea_tracts_counts %>%
+  rename(Regionname = GEOID_ZCTA5_20)
+
+sea_hous <- merge(sea_hous, sea_tracts_counts, by="Regionname")
+sea_rent <- merge(sea_rent, sea_tracts_counts, by="Regionname")
+
+```
+
+```{r}
+# Add MHA columns to Seattle Data
+sea_hous$MHA <- 0
+sea_rent$MHA <- 0
+
+for (x in MHA_raw$ZIP) {
+  if (x %in% sea_hous$Regionname) {
+    sea_hous$MHA[sea_hous$Regionname %in% x] <- sea_hous$MHA[sea_hous$Regionname %in% x]+1
+    sea_rent$MHA[sea_rent$Regionname %in% x] <- sea_rent$MHA[sea_rent$Regionname %in% x]+1
+  }
+}
+
+
+# M, M0, M1, M2
+sea_hous$M <- 0
+sea_rent$M <- 0
+sea_hous$M1 <- 0
+sea_rent$M1 <- 0
+sea_hous$M2 <- 0
+sea_rent$M2 <- 0
+
+
+sea_hous$M <- 0
+sea_rent$M <- 0
+sea_hous$M1 <- 0
+sea_rent$M1 <- 0
+sea_hous$M2 <- 0
+sea_rent$M2 <- 0
+countx <- 0
+for (x in MHA_raw$MHA_VALUE) {
+  countx <- countx + 1
+  if (x=="M") {
+    sea_hous$M[sea_hous$Regionname %in% MHA_raw$ZIP[countx]] <- sea_hous$M[sea_hous$Regionname %in% MHA_raw$ZIP[countx]]+1
+    sea_rent$M[sea_rent$Regionname %in% MHA_raw$ZIP[countx]] <- sea_rent$M[sea_rent$Regionname %in% MHA_raw$ZIP[countx]]+1
+  }
+  else if (x=="M1") {
+    sea_hous$M1[sea_hous$Regionname %in% MHA_raw$ZIP[countx]] <- sea_hous$M1[sea_hous$Regionname %in% MHA_raw$ZIP[countx]]+1
+    sea_rent$M1[sea_rent$Regionname %in% MHA_raw$ZIP[countx]] <- sea_rent$M1[sea_rent$Regionname %in% MHA_raw$ZIP[countx]]+1
+  }
+  else if (x=="M2") {
+    sea_hous$M2[sea_hous$Regionname %in% MHA_raw$ZIP[countx]] <- sea_hous$M2[sea_hous$Regionname %in% MHA_raw$ZIP[countx]]+1
+    sea_rent$M2[sea_rent$Regionname %in% MHA_raw$ZIP[countx]] <- sea_rent$M2[sea_rent$Regionname %in% MHA_raw$ZIP[countx]]+1
+  }
+}
+
+```
+
+
+```{r}
+## Housing
+sea_hous$MHA_Intensity <- (sea_hous$MHA)/(sea_hous$COUNT)
+sea_hous$M_Intensity <- (sea_hous$M)/(sea_hous$COUNT)
+sea_hous$M1_Intensity <- (sea_hous$M1)/(sea_hous$COUNT)
+sea_hous$M2_Intensity <- (sea_hous$M2)/(sea_hous$COUNT)
+
+## Rent
+sea_rent$MHA_Intensity <- (sea_rent$MHA)/(sea_rent$COUNT)
+sea_rent$M_Intensity <- (sea_rent$M)/(sea_rent$COUNT)
+sea_rent$M1_Intensity <- (sea_rent$M1)/(sea_rent$COUNT)
+sea_rent$M2_Intensity <- (sea_rent$M2)/(sea_rent$COUNT)
+
+```
+
+
+```{r time}
+# Seattle
+sea_hous_time <- sea_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+sea_hous_time$Date <- gsub("X", "", sea_hous_time$Date)
+sea_hous_time$Date <- gsub("\\.", "-", sea_hous_time$Date)
+sea_hous_time$Date <- as.Date(sea_hous_time$Date)
+
+sea_rent_time <- sea_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+sea_rent_time$Date <- gsub("X", "", sea_rent_time$Date)
+sea_rent_time$Date <- gsub("\\.", "-", sea_rent_time$Date)
+sea_rent_time$Date <- as.Date(sea_rent_time$Date)
+
+# Tacoma
+tac_hous_time <- tac_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+tac_hous_time$Date <- gsub("X", "", tac_hous_time$Date)
+tac_hous_time$Date <- gsub("\\.", "-", tac_hous_time$Date)
+tac_hous_time$Date <- as.Date(tac_hous_time$Date)
+
+tac_rent_time <- tac_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+tac_rent_time$Date <- gsub("X", "", tac_rent_time$Date)
+tac_rent_time$Date <- gsub("\\.", "-", tac_rent_time$Date)
+tac_rent_time$Date <- as.Date(tac_rent_time$Date)
+
+# Spokane
+spo_hous_time <- spo_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+spo_hous_time$Date <- gsub("X", "", spo_hous_time$Date)
+spo_hous_time$Date <- gsub("\\.", "-", spo_hous_time$Date)
+spo_hous_time$Date <- as.Date(spo_hous_time$Date)
+
+spo_rent_time <- spo_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+spo_rent_time$Date <- gsub("X", "", spo_rent_time$Date)
+spo_rent_time$Date <- gsub("\\.", "-", spo_rent_time$Date)
+spo_rent_time$Date <- as.Date(spo_rent_time$Date)
+
+# Denver
+den_hous_time <- den_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+den_hous_time$Date <- gsub("X", "", den_hous_time$Date)
+den_hous_time$Date <- gsub("\\.", "-", den_hous_time$Date)
+den_hous_time$Date <- as.Date(den_hous_time$Date)
+
+den_rent_time <- den_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+den_rent_time$Date <- gsub("X", "", den_rent_time$Date)
+den_rent_time$Date <- gsub("\\.", "-", den_rent_time$Date)
+den_rent_time$Date <- as.Date(den_rent_time$Date)
+
+# SF
+sfo_hous_time <- sfo_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+sfo_hous_time$Date <- gsub("X", "", sfo_hous_time$Date)
+sfo_hous_time$Date <- gsub("\\.", "-", sfo_hous_time$Date)
+sfo_hous_time$Date <- as.Date(sfo_hous_time$Date)
+
+sfo_rent_time <- sfo_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+sfo_rent_time$Date <- gsub("X", "", sfo_rent_time$Date)
+sfo_rent_time$Date <- gsub("\\.", "-", sfo_rent_time$Date)
+sfo_rent_time$Date <- as.Date(sfo_rent_time$Date)
+
+# SJ
+sjc_hous_time <- sjc_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+sjc_hous_time$Date <- gsub("X", "", sjc_hous_time$Date)
+sjc_hous_time$Date <- gsub("\\.", "-", sjc_hous_time$Date)
+sjc_hous_time$Date <- as.Date(sjc_hous_time$Date)
+
+sjc_rent_time <- sjc_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+sjc_rent_time$Date <- gsub("X", "", sjc_rent_time$Date)
+sjc_rent_time$Date <- gsub("\\.", "-", sjc_rent_time$Date)
+sjc_rent_time$Date <- as.Date(sjc_rent_time$Date)
+
+
+# Fresno
+fre_hous_time <- fre_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+fre_hous_time$Date <- gsub("X", "", fre_hous_time$Date)
+fre_hous_time$Date <- gsub("\\.", "-", fre_hous_time$Date)
+fre_hous_time$Date <- as.Date(fre_hous_time$Date)
+
+fre_rent_time <- fre_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+fre_rent_time$Date <- gsub("X", "", fre_rent_time$Date)
+fre_rent_time$Date <- gsub("\\.", "-", fre_rent_time$Date)
+fre_rent_time$Date <- as.Date(fre_rent_time$Date)
+
+# Las Vegas
+las_hous_time <- las_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+las_hous_time$Date <- gsub("X", "", las_hous_time$Date)
+las_hous_time$Date <- gsub("\\.", "-", las_hous_time$Date)
+las_hous_time$Date <- as.Date(las_hous_time$Date)
+
+las_rent_time <- las_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+las_rent_time$Date <- gsub("X", "", las_rent_time$Date)
+las_rent_time$Date <- gsub("\\.", "-", las_rent_time$Date)
+las_rent_time$Date <- as.Date(las_rent_time$Date)
+
+# Phoenix
+phx_hous_time <- phx_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+phx_hous_time$Date <- gsub("X", "", phx_hous_time$Date)
+phx_hous_time$Date <- gsub("\\.", "-", phx_hous_time$Date)
+phx_hous_time$Date <- as.Date(phx_hous_time$Date)
+
+phx_rent_time <- phx_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+phx_rent_time$Date <- gsub("X", "", phx_rent_time$Date)
+phx_rent_time$Date <- gsub("\\.", "-", phx_rent_time$Date)
+phx_rent_time$Date <- as.Date(phx_rent_time$Date)
+
+# Sacramento
+sac_hous_time <- sac_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+sac_hous_time$Date <- gsub("X", "", sac_hous_time$Date)
+sac_hous_time$Date <- gsub("\\.", "-", sac_hous_time$Date)
+sac_hous_time$Date <- as.Date(sac_hous_time$Date)
+
+sac_rent_time <- sac_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+sac_rent_time$Date <- gsub("X", "", sac_rent_time$Date)
+sac_rent_time$Date <- gsub("\\.", "-", sac_rent_time$Date)
+sac_rent_time$Date <- as.Date(sac_rent_time$Date)
+
+# LA
+lax_hous_time <- lax_hous %>%
+  pivot_longer(cols = c('X2000.01.31':'X2023.12.31'), names_to = "Date", values_to = "Price")
+lax_hous_time$Date <- gsub("X", "", lax_hous_time$Date)
+lax_hous_time$Date <- gsub("\\.", "-", lax_hous_time$Date)
+lax_hous_time$Date <- as.Date(lax_hous_time$Date)
+
+lax_rent_time <- lax_rent %>%
+  pivot_longer(cols = c('X2015.01.31':'X2023.12.31'), names_to = "Date", values_to = "Rent")
+lax_rent_time$Date <- gsub("X", "", lax_rent_time$Date)
+lax_rent_time$Date <- gsub("\\.", "-", lax_rent_time$Date)
+lax_rent_time$Date <- as.Date(lax_rent_time$Date)
+
+```
+
+
+## EDA
+
+
+### Descriptive Statistics
+```{r}
+stargazer(as.data.frame(sea_hous_time["Price"]), as.data.frame(spo_hous_time["Price"]), as.data.frame(tac_hous_time["Price"]), as.data.frame(den_hous_time["Price"]), as.data.frame(fre_hous_time["Price"]), as.data.frame(phx_hous_time["Price"]), as.data.frame(sac_hous_time["Price"]), type="html", out="prices.html")
+
+stargazer(as.data.frame(sea_rent_time["Rent"]), as.data.frame(tac_rent_time["Rent"]), as.data.frame(den_rent_time["Rent"]), as.data.frame(las_rent_time["Rent"]), as.data.frame(phx_rent_time["Rent"]), as.data.frame(sac_rent_time["Rent"]), type="html", out="rent.html")
+
+
+sea_hous_2015 <- sea_hous_time$Price[which(sea_hous_time$Date>="2015-01-01" & sea_hous_time$Date<="2015-12-31")]
+sea_hous_2023 <- sea_hous_time$Price[which(sea_hous_time$Date>="2023-01-01" & sea_hous_time$Date<="2023-12-31")]
+
+sea_rent_2015 <- sea_rent_time$Rent[which(sea_rent_time$Date>="2016-01-01" & sea_hous_time$Date<="2016-12-31")]
+sea_rent_2023 <- sea_rent_time$Rent[which(sea_rent_time$Date>="2023-01-01" & sea_rent_time$Date<="2023-12-31")]
+
+stargazer(as.data.frame(sea_hous_2015), as.data.frame(sea_hous_2023), as.data.frame(sea_rent_2015), as.data.frame(sea_rent_2023), type="html", out="summary.html")
+
+
+
+```
+
+
+```{r explore}
+library(car)
+library(patchwork)
+
+## summary statistics
+summary(sea_hous_time)
+summary(sea_hous_time[c('Price', 'MHA')])
+summary(sea_rent_time[c('Rent','MHA')])
+#stargazer(sea_hous_time[c("Price","MHA","MHA_level")], type = "text")
+
+## price in 2015 vs 2023
+#ggplot() + geom_boxplot(data=sea_hous_time[which(sea_hous_time$Date>="2015-01-31"&sea_hous_time$Date<="2015-12-31"),], aes(x=Date, y=Price)) + geom_boxplot(data=sea_hous_time[which(sea_hous_time$Date>="2023-01-31"&sea_hous_time$Date<="2023-12-31"),], aes(x=Date, y=Price))
+
+#gplot() + geom_boxplot(data=sea_rent_time[which(sea_rent_time$Date>="2015-01-31"&sea_rent_time$Date<="2015-12-31"),], aes(x=Date, y=Rent)) + geom_boxplot(data=sea_rent_time[which(sea_rent_time$Date>="2023-01-31"&sea_rent_time$Date<="2023-12-31"),], aes(x=Date, y=Rent))
+
+## boxplot of log housing prices by MHA level
+#ggplot(sea_hous_time, aes(x=MHA_level, y=log(Price), fill=MHA_level)) + geom_boxplot()
+
+#ggplot(sea_rent_time, aes(x=MHA_level, y=log(Rent), fill=MHA_level)) + geom_boxplot()
+
+## Seattle housing prices vs Date
+pd <- ggplot(sea_hous_time[which(sea_hous_time$Date>"2015-01-31"),], aes(x=Date, y=Price)) + 
+  stat_summary(fun = "mean", geom = "line") + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+pd
+
+### by MHA
+#pdMHA <- ggplot(sea_hous_time[which(sea_hous_time$Date>"2015-01-31"),], aes(x=Date, y=Price, color=MHA_level)) + stat_summary(fun = "mean", geom = "line")
+
+## Seattle rent vs date
+rd <- ggplot(sea_rent_time[which(sea_rent_time$Date>"2015-01-31"),], aes(x=Date, y=Rent)) + stat_summary(fun = "mean", geom = "line") + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+rd
+
+pd+rd
+
+### by MHA
+#rdMHA <- ggplot(sea_rent_time[which(sea_rent_time$Date>"2015-01-31"),], aes(x=Date, y=Rent, color=MHA_level)) + stat_summary(fun = "mean", geom = "line")
+
+
+## Sea housing vs MHA intensity
+#ggplot(sea_hous_time[which(sea_hous_time$Date>"2015-01-31"),], aes(x=MHA_Intensity, y=Price)) + stat_summary(fun = "mean", geom = "line")
+
+## Sea rent vs MHA intensity
+#ggplot(sea_rent_time[which(sea_rent_time$Date>"2015-01-31"),], aes(x=MHA_Intensity, y=Rent)) + stat_summary(fun = "mean", geom = "line")
+```
+
+### Price and rent timeline by ZIP within Seattle
+
+```{r}
+price_zip <- ggplot(sea_hous_time[which(sea_hous_time$Date>"2012-01-01"),], aes(x=Date, y=Price, color=as.factor(Regionname))) + 
+  stat_summary(fun = "mean", geom = "line")
+
+rent_zip <- ggplot(sea_rent_time[which(sea_rent_time$Date>"2012-01-01"),], aes(x=Date, y=Rent, color=as.factor(Regionname))) + 
+  stat_summary(fun = "mean", geom = "line")
+
+price_zip
+rent_zip
+```
+
+## Regressions 
+
+### Housing
+
+```{r}
+# Regressions for Price
+## Price by MHA, from 2015 to 2023
+model1 <- lm(Price~MHA, sea_hous_time[which(sea_hous_time$Date>="2012-01-01"),])
+stargazer(model1, type="text")
+
+## Price by MHA Intensity, from 2015 to 2023
+model1 <- lm(Price~MHA_Intensity, sea_hous_time[which(sea_hous_time$Date>="2012-01-01"),])
+stargazer(model1, type="text")
+
+
+## Price based on whether it's in Seattle or Spokane
+#### Need to create dataset with column for Seattle as a dummy variable, then regress on that dummy
+joint_spo <- dplyr::bind_rows(sea_hous_time, spo_hous_time)
+joint_spo$Seattle <- ifelse(joint_spo$City=="Seattle", 1, 0)
+model2 <- lm(Price~Seattle, joint_spo)
+stargazer(model2, type="text")
+
+joint_tac <- dplyr::bind_rows(sea_hous_time, tac_hous_time)
+joint_tac$Seattle <- ifelse(joint_tac$City=="Seattle", 1, 0)
+model3 <- lm(Price~Seattle, joint_tac)
+stargazer(model3, type="text")
+
+joint_den <- dplyr::bind_rows(sea_hous_time, den_hous_time)
+joint_den$Seattle <- ifelse(joint_den$City=="Seattle", 1, 0)
+model4 <- lm(Price~Seattle, joint_den)
+stargazer(model4, type="text")
+
+joint_sfo <- dplyr::bind_rows(sea_hous_time, sfo_hous_time)
+joint_sfo$Seattle <- ifelse(joint_sfo$City=="Seattle", 1, 0)
+model5 <- lm(Price~Seattle, joint_sfo)
+stargazer(model5, type="text")
+
+joint_sjc <- dplyr::bind_rows(sea_hous_time, sjc_hous_time)
+joint_sjc$Seattle <- ifelse(joint_sjc$City=="Seattle", 1, 0)
+model6 <- lm(Price~Seattle, joint_sjc)
+stargazer(model6, type="text")
+
+joint_fre <- dplyr::bind_rows(sea_hous_time, fre_hous_time)
+joint_fre$Seattle <- ifelse(joint_fre$City=="Seattle", 1, 0)
+model7 <- lm(Price~Seattle, joint_fre)
+stargazer(model7, type="text")
+
+joint_las <- dplyr::bind_rows(sea_hous_time, las_hous_time)
+joint_las$Seattle <- ifelse(joint_las$City=="Seattle", 1, 0)
+model8 <- lm(Price~Seattle, joint_las)
+stargazer(model8, type="text")
+
+joint_phx <- dplyr::bind_rows(sea_hous_time, phx_hous_time)
+joint_phx$Seattle <- ifelse(joint_phx$City=="Seattle", 1, 0)
+model9 <- lm(Price~Seattle, joint_phx)
+stargazer(model9, type="text")
+
+joint_sac <- dplyr::bind_rows(sea_hous_time, sac_hous_time)
+joint_sac$Seattle <- ifelse(joint_sac$City=="Seattle", 1, 0)
+model10 <- lm(Price~Seattle, joint_sac)
+stargazer(model10, type="text")
+
+joint_lax <- dplyr::bind_rows(sea_hous_time, lax_hous_time)
+joint_lax$Seattle <- ifelse(joint_lax$City=="Seattle", 1, 0)
+model11 <- lm(Price~Seattle, joint_lax)
+stargazer(model11, type="text")
+```
+Increase in price by increase in number of MHA blocks.
+
+Prices statistically significantly higher in seattle than all except SJ. This isnt did though, doesn't tell us anything.
+
+### Rent 
+
+```{r}
+# Regressions for Rent
+## Rent by MHA, from 2015 to 2023
+model1 <- lm(Rent~MHA, sea_rent_time[which(sea_rent_time$Date>"2015-01-31"),])
+stargazer(model1, type="text")
+
+## Rent by MHA Intensity, from 2015 to 2023
+model1 <- lm(Rent~MHA_Intensity, sea_rent_time[which(sea_rent_time$Date>"2015-01-31"),])
+stargazer(model1, type="text")
+
+
+## Rent based on whether it's in Seattle or Spokane
+#### Need to create dataset with column for Seattle as a dummy variable, then regress on that dummy
+
+joint_spor <- dplyr::bind_rows(sea_rent_time, spo_rent_time)
+joint_spor$Seattle <- ifelse(joint_spor$City=="Seattle", 1, 0)
+model3 <- lm(Rent~Seattle, joint_spor)
+stargazer(model3, type="text")
+
+joint_tacr <- dplyr::bind_rows(sea_rent_time, tac_rent_time)
+joint_tacr$Seattle <- ifelse(joint_tacr$City=="Seattle", 1, 0)
+model3 <- lm(Rent~Seattle, joint_tacr)
+stargazer(model3, type="text")
+
+joint_denr <- dplyr::bind_rows(sea_rent_time, den_rent_time)
+joint_denr$Seattle <- ifelse(joint_denr$City=="Seattle", 1, 0)
+model4 <- lm(Rent~Seattle, joint_denr)
+stargazer(model4, type="text")
+
+joint_sfor <- dplyr::bind_rows(sea_rent_time, sfo_rent_time)
+joint_sfor$Seattle <- ifelse(joint_sfor$City=="Seattle", 1, 0)
+model5 <- lm(Rent~Seattle, joint_sfor)
+stargazer(model5, type="text")
+
+joint_sjcr <- dplyr::bind_rows(sea_rent_time, sjc_rent_time)
+joint_sjcr$Seattle <- ifelse(joint_sjcr$City=="Seattle", 1, 0)
+model5 <- lm(Rent~Seattle, joint_sjcr)
+stargazer(model5, type="text")
+
+joint_frer <- dplyr::bind_rows(sea_rent_time, fre_rent_time)
+joint_frer$Seattle <- ifelse(joint_frer$City=="Seattle", 1, 0)
+model5 <- lm(Rent~Seattle, joint_frer)
+stargazer(model5, type="text")
+
+joint_lasr <- dplyr::bind_rows(sea_rent_time, las_rent_time)
+joint_lasr$Seattle <- ifelse(joint_lasr$City=="Seattle", 1, 0)
+model8 <- lm(Rent~Seattle, joint_lasr)
+stargazer(model8, type="text")
+
+joint_phxr <- dplyr::bind_rows(sea_rent_time, phx_rent_time)
+joint_phxr$Seattle <- ifelse(joint_phxr$City=="Seattle", 1, 0)
+model9 <- lm(Rent~Seattle, joint_phxr)
+stargazer(model9, type="text")
+
+joint_sacr <- dplyr::bind_rows(sea_rent_time, sac_rent_time)
+joint_sacr$Seattle <- ifelse(joint_sacr$City=="Seattle", 1, 0)
+model10 <- lm(Rent~Seattle, joint_sacr)
+stargazer(model10, type="text")
+
+joint_laxr <- dplyr::bind_rows(sea_rent_time, lax_rent_time)
+joint_laxr$Seattle <- ifelse(joint_laxr$City=="Seattle", 1, 0)
+model11 <- lm(Rent~Seattle, joint_laxr)
+stargazer(model11, type="text")
+```
+
+```{r}
+## price Seattle vs other Cities
+### Spokane
+
+ggplot(joint_spo[which(joint_spo$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### Tacoma
+ggplot(joint_tac[which(joint_tac$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### Denver
+ggplot(joint_den[which(joint_den$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### SFO
+ggplot(joint_sfo[which(joint_sfo$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### SJ
+ggplot(joint_sjc[which(joint_sjc$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### Fresno
+ggplot(joint_fre[which(joint_fre$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### Las Vegas
+ggplot(joint_las[which(joint_las$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### Phoenix
+ggplot(joint_phx[which(joint_phx$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### Sacramento
+ggplot(joint_sac[which(joint_sac$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+### LA
+ggplot(joint_lax[which(joint_lax$Date>="2012-01-01"),], aes(x=Date, y=Price, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+
+## rent Seattle vs other Cities
+
+ggplot(joint_tacr[which(joint_tacr$Date>="2012-01-01"),], aes(x=Date, y=Rent, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+ggplot(joint_denr[which(joint_denr$Date>="2012-01-01"),], aes(x=Date, y=Rent, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+ggplot(joint_sfor[which(joint_sfor$Date>="2012-01-01"),], aes(x=Date, y=Rent, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+ggplot(joint_lasr[which(joint_lasr$Date>="2012-01-01"),], aes(x=Date, y=Rent, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+ggplot(joint_phxr[which(joint_phxr$Date>="2012-01-01"),], aes(x=Date, y=Rent, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+ggplot(joint_sacr[which(joint_sacr$Date>="2012-01-01"),], aes(x=Date, y=Rent, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+ggplot(joint_laxr[which(joint_laxr$Date>="2012-01-01"),], aes(x=Date, y=Rent, color=City)) + 
+  stat_summary(fun = "mean", geom = "line")
+
+```
+
+
+
+## Difference in Differences
+
+#### exporting sea_hous_time into excel
+```{r}
+install.packages("writexl")
+library(writexl)
+
+write_xlsx(sea_hous_time, "sea_hous_time.xlsx")
+```
+
+### Removing the 2017-19 timeframe
+```{r}
+sea <- sea_hous_time[which(sea_hous_time$Date<="2016-12-31" | sea_hous_time$Date>="2019-01-01"),]
+sea <- sea[which(sea$Date>="2015-01-01"),]
+
+spo <- spo_hous_time[which(spo_hous_time$Date<="2016-12-31" | spo_hous_time$Date>="2019-01-01"),]
+spo <- spo[which(spo$Date>="2015-01-01"),]
+
+tac <- tac_hous_time[which(tac_hous_time$Date<="2016-12-31" | tac_hous_time$Date>="2019-01-01"),]
+tac <- tac[which(tac$Date>="2015-01-01"),]
+
+den <- den_hous_time[which(den_hous_time$Date<="2016-12-31" | den_hous_time$Date>="2019-01-01"),]
+den <- den[which(den$Date>="2015-01-01"),]
+
+sfo <- sfo_hous_time[which(sfo_hous_time$Date<="2016-12-31" | sfo_hous_time$Date>="2019-01-01"),]
+sfo <- sfo[which(sfo$Date>="2015-01-01"),]
+
+sjc <- sjc_hous_time[which(sjc_hous_time$Date<="2016-12-31" | sjc_hous_time$Date>="2019-01-01"),]
+sjc <- sjc[which(sjc$Date>="2015-01-01"),]
+
+fre <- fre_hous_time[which(fre_hous_time$Date<="2016-12-31" | fre_hous_time$Date>="2019-01-01"),]
+fre <- fre[which(fre$Date>="2015-01-01"),]
+
+las <- las_hous_time[which(las_hous_time$Date<="2016-12-31" | las_hous_time$Date>="2019-01-01"),]
+las <- las[which(las$Date>="2015-01-01"),]
+
+phx <- phx_hous_time[which(phx_hous_time$Date<="2016-12-31" | phx_hous_time$Date>="2019-01-01"),]
+phx <- phx[which(phx$Date>="2015-01-01"),]
+
+sac <- sac_hous_time[which(sac_hous_time$Date<="2016-12-31" | sac_hous_time$Date>="2019-01-01"),]
+sac <- sac[which(sac$Date>="2015-01-01"),]
+
+lax <- lax_hous_time[which(lax_hous_time$Date<="2016-12-31" | lax_hous_time$Date>="2019-01-01"),]
+lax <- lax[which(lax$Date>="2015-01-01"),]
+
+### Rent
+
+sear <- sea_rent_time[which(sea_rent_time$Date<="2016-12-31" | sea_rent_time$Date>="2019-01-01"),]
+sear <- sear[which(sear$Date>="2016-01-01"),]
+
+spor <- spo_rent_time[which(spo_rent_time$Date<="2016-12-31" | spo_rent_time$Date>="2019-01-01"),]
+spor <- spor[which(spor$Date>="2016-01-01"),]
+
+tacr <- tac_rent_time[which(tac_rent_time$Date<="2016-12-31" | tac_rent_time$Date>="2019-01-01"),]
+tacr <- tacr[which(tacr$Date>="2016-01-01"),]
+
+denr <- den_rent_time[which(den_rent_time$Date<="2016-12-31" | den_rent_time$Date>="2019-01-01"),]
+denr <- denr[which(denr$Date>="2016-01-01"),]
+
+sfor <- sfo_rent_time[which(sfo_rent_time$Date<="2016-12-31" | sfo_rent_time$Date>="2019-01-01"),]
+sfor <- sfor[which(sfor$Date>="2016-01-01"),]
+
+sjcr <- sjc_rent_time[which(sjc_rent_time$Date<="2016-12-31" | sjc_rent_time$Date>="2019-01-01"),]
+sjcr <- sjcr[which(sjcr$Date>="2016-01-01"),]
+
+frer <- fre_rent_time[which(fre_rent_time$Date<="2016-12-31" | fre_rent_time$Date>="2019-01-01"),]
+frer <- frer[which(frer$Date>="2016-01-01"),]
+
+lasr <- las_rent_time[which(las_rent_time$Date<="2016-12-31" | las_rent_time$Date>="2019-01-01"),]
+lasr <- lasr[which(lasr$Date>="2016-01-01"),]
+
+phxr <- phx_rent_time[which(phx_rent_time$Date<="2016-12-31" | phx_rent_time$Date>="2019-01-01"),]
+phxr <- phxr[which(phxr$Date>="2016-01-01"),]
+
+sacr <- sac_rent_time[which(sac_rent_time$Date<="2016-12-31" | sac_rent_time$Date>="2019-01-01"),]
+sacr <- sacr[which(sacr$Date>="2016-01-01"),]
+
+laxr <- lax_rent_time[which(lax_rent_time$Date<="2016-12-31" | lax_rent_time$Date>="2019-01-01"),]
+laxr <- laxr[which(laxr$Date>="2016-01-01"),]
+```
+
+
+## Parallel trends
+
+### ZIP
+
+```{r}
+
+parallel_price <- ggplot(sea[which(sea$Date>="2015-01-01"),], aes(x=Date, y=log(Price), color=as.factor(Regionname))) + 
+  stat_summary(fun = "mean", geom = "line") +
+  geom_vline(xintercept=as.numeric(as.Date("2019-01-01")), linetype=4) +
+  geom_vline(xintercept=as.numeric(as.Date("2017-01-01")), linetype=4) + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + labs(color="ZIP Code")
+
+parallel_rent <- ggplot(sear[which(sear$Date>="2015-01-01"),], aes(x=Date, y=log(Rent), color=as.factor(Regionname))) + 
+  stat_summary(fun = "mean", geom = "line") +
+  geom_vline(xintercept=as.numeric(as.Date("2019-01-01")), linetype=4) +
+  geom_vline(xintercept=as.numeric(as.Date("2017-01-01")), linetype=4) + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + labs(color="ZIP Code")
+
+library(patchwork)
+parallel_price + parallel_rent
+
+```
+
+
+### Cross city 
+
+```{r}
+## Housing
+
+joint_hous_time <- dplyr::bind_rows(sea_hous_time, spo_hous_time, tac_hous_time, den_hous_time, fre_hous_time, phx_hous_time, sac_hous_time)
+
+parallel_price_city <- ggplot(joint_hous_time[which(joint_hous_time$Date>="2015-01-01"),], aes(x=Date, y=log(Price), color=City)) + 
+  stat_summary(fun = "mean", geom = "line") +
+  geom_vline(xintercept=as.numeric(as.Date("2019-01-01")), linetype=4) +
+  geom_vline(xintercept=as.numeric(as.Date("2017-01-01")), linetype=4) + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+
+## Rent
+
+joint_rent_time <- dplyr::bind_rows(sea_rent_time, tac_rent_time, den_rent_time, las_rent_time, phx_rent_time, sac_rent_time)
+
+parallel_rent_city <- ggplot(jointr[which(jointr$Date>="2016-01-01"),], aes(x=Date, y=log(Rent), color=City)) + 
+  stat_summary(fun = "mean", geom = "line") +
+  geom_vline(xintercept=as.numeric(as.Date("2019-01-01")), linetype=4) +
+  geom_vline(xintercept=as.numeric(as.Date("2017-01-01")), linetype=4) + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+#parallel_rent_city
+library(patchwork)
+parallel_price_city + parallel_rent_city
+
+```
+
+### Difference in Difference main models 
+
+```{r DID}
+
+##------ Housing ------
+
+## main spatial (within-Seattle) analysis
+sea$time <- ifelse(sea$Date>="2019-01-01",1,0)
+sea$did <- sea$time * sea$MHA_Intensity
+
+
+did1 <- lm(log(Price) ~ MHA_Intensity+time+did, sea)
+stargazer(did1, type="text")
+
+
+did2 <- lm(log(Price) ~ MHA_Intensity+time+did+M_Intensity+M1_Intensity+M2_Intensity+factor(Regionname)+factor(Date), sea)
+stargazer(did2, type="text")
+
+
+## DID for Prices in Seattle vs Other Cities (DID is Seattle post 2019)
+# All cities
+joint <- dplyr::bind_rows(sea, spo, tac, den, fre, phx, sac)
+joint$treat <- ifelse(joint$City == c("Seattle", "Shoreline"),1,0)
+joint$time <- ifelse(joint$Date>="2019-01-01",1,0)
+
+did3 <- lm(log(Price) ~ treat*time, joint)
+#stargazer(did3, type="text")
+
+did4 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint)
+#stargazer(did4, type="text")
+
+
+##----- Rent -------
+
+## main spatial (within-Seattle) analysis
+sear$time <- ifelse(sear$Date>="2019-01-01",1,0)
+sear$did <- sear$time * sear$MHA_Intensity
+
+did5 <- lm(log(Rent) ~ MHA_Intensity+time+did, sear)
+#stargazer(did5, type="text")
+
+did6 <- lm(log(Rent) ~ MHA_Intensity+time+did+M_Intensity+M1_Intensity+M2_Intensity+factor(Regionname)+factor(Date), sear)
+#stargazer(did6, type="text")
+
+
+## DID for Prices in Seattle vs Other Cities (DID is Seattle post 2019)
+# All cities
+jointr <- dplyr::bind_rows(sear, tacr, denr, lasr, phxr, sacr)
+jointr$treat <- ifelse(jointr$City == c("Seattle", "Shoreline"),1,0)
+jointr$time <- ifelse(jointr$Date>="2019-01-01",1,0)
+
+did7 <- lm(log(Rent) ~ treat*time, jointr)
+#stargazer(did7, type="text")
+
+did8 <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), jointr)
+#stargazer(did8, type="text")
+
+
+####------ Output files ------
+
+#stargazer(did1, did2, did5, did6, type="html", omit=c("Regionname", "Date"), digits=3, out="table1.html")
+
+#stargazer(did3, did4, did7, did8, type="html", omit=c("Regionname", "Date"), digits=3, out="table2.html")
+
+```
+
+
+## Heterogeneity in DID
+Check for heterogeneity in M, M1, M2
+
+```{r}
+sea$did_M <- sea$time * sea$M_Intensity
+sea$did_M1 <- sea$time * sea$M1_Intensity
+sea$did_M2 <- sea$time * sea$M2_Intensity
+
+did1 <- lm(log(Price) ~ MHA_Intensity+time+did_M+did_M1+did_M2+factor(Regionname)+factor(Date), sea)
+#stargazer(didreg, type="text")
+
+
+
+didM2 <- lm(log(Price) ~ M2_Intensity+time+did_M2+factor(Regionname)+factor(Date), sea)
+stargazer(didM2, type="text")
+
+sear$did_M <- sear$time * sear$M_Intensity
+sear$did_M1 <- sear$time * sear$M1_Intensity
+sear$did_M2 <- sear$time * sear$M2_Intensity
+
+did2 <- lm(log(Rent) ~ time+MHA_Intensity+did_M+did_M1+did_M2+factor(Regionname)+factor(Date), sear)
+#stargazer(didreg, type="text")
+
+#stargazer(did1, did2, type="html", omit=c("Regionname", "Date"), digits=3, out="table3.html")
+```
+
+
+
+## Robustness Checks
+
+Dummy variables for intensity?
+
+### Price
+Comparing Seattle to other cities separately
+
+```{r}
+joint_spot <- dplyr::bind_rows(sea, spo)
+joint_spot$treat <- ifelse(joint_spot$City == "Seattle",1,0)
+joint_spot$time <- ifelse(joint_spot$Date>="2019-01-01",1,0)
+did_spot <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint_spot)
+#stargazer(did_spot, type="text")
+
+joint_tact <- dplyr::bind_rows(sea, tac)
+joint_tact$treat <- ifelse(joint_tact$City == "Seattle",1,0)
+joint_tact$time <- ifelse(joint_tact$Date>="2019-01-01",1,0)
+did_tact <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint_tact)
+#stargazer(did_tact, type="text")
+
+joint_dent <- dplyr::bind_rows(sea, den)
+joint_dent$treat <- ifelse(joint_dent$City == "Seattle",1,0)
+joint_dent$time <- ifelse(joint_dent$Date>="2019-01-01",1,0)
+did_dent <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint_dent)
+#stargazer(did_dent, type="text")
+
+joint_fret <- dplyr::bind_rows(sea, fre)
+joint_fret$treat <- ifelse(joint_fret$City == "Seattle",1,0)
+joint_fret$time <- ifelse(joint_fret$Date>="2019-01-01",1,0)
+did_fret <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint_fret)
+#stargazer(did_fret, type="text")
+
+joint_phxt <- dplyr::bind_rows(sea, phx)
+joint_phxt$treat <- ifelse(joint_phxt$City == "Seattle",1,0)
+joint_phxt$time <- ifelse(joint_phxt$Date>="2019-01-01",1,0)
+did_phxt <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint_phxt)
+#stargazer(did_phxt, type="text")
+
+joint_sact <- dplyr::bind_rows(sea, sac)
+joint_sact$treat <- ifelse(joint_sact$City == "Seattle",1,0)
+joint_sact$time <- ifelse(joint_sact$Date>="2019-01-01",1,0)
+did_sact <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint_sact)
+#stargazer(did_sact, type="text")
+
+
+stargazer(did_spot, did_tact, did_dent, did_fret, did_phxt, did_sact, type="html", omit=c("Regionname", "Date"), digits=3, out="table4.html")
+
+```
+
+### Rent
+Comparing Seattle to other cities separately
+```{r}
+
+joint_tacrt <- dplyr::bind_rows(sear, tacr)
+joint_tacrt$treat <- ifelse(joint_tacrt$City == "Seattle",1,0)
+joint_tacrt$time <- ifelse(joint_tacrt$Date>="2019-01-01",1,0)
+did_tacrt <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), joint_tacrt)
+#stargazer(did_tacrt, type="text")
+
+joint_denrt <- dplyr::bind_rows(sear, denr)
+joint_denrt$treat <- ifelse(joint_denrt$City == "Seattle",1,0)
+joint_denrt$time <- ifelse(joint_denrt$Date>="2019-01-01",1,0)
+did_denrt <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), joint_denrt)
+#stargazer(did_denrt, type="text")
+
+joint_lasrt <- dplyr::bind_rows(sear, lasr)
+joint_lasrt$treat <- ifelse(joint_lasrt$City == "Seattle",1,0)
+joint_lasrt$time <- ifelse(joint_lasrt$Date>="2019-01-01",1,0)
+did_lasrt <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), joint_lasrt)
+#stargazer(did_lasrt, type="text")
+
+joint_phxrt <- dplyr::bind_rows(sear, phxr)
+joint_phxrt$treat <- ifelse(joint_phxrt$City == "Seattle",1,0)
+joint_phxrt$time <- ifelse(joint_phxrt$Date>="2019-01-01",1,0)
+did_phxrt <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), joint_phxrt)
+#stargazer(did_phxrt, type="text")
+
+joint_sacrt <- dplyr::bind_rows(sear, sacr)
+joint_sacrt$treat <- ifelse(joint_sacrt$City == "Seattle",1,0)
+joint_sacrt$time <- ifelse(joint_sacrt$Date>="2019-01-01",1,0)
+did_sacrt <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), joint_sacrt)
+#stargazer(did_sacrt, type="text")
+
+stargazer(did_tacrt, did_denrt, did_lasrt, did_phxrt, did_sacrt, type="html", omit=c("Regionname", "Date"), digits=3, out="table5.html")
+
+```
+
+
+## DID for 2017
+Using 2017 instead of 2019 as cutoff date
+```{r}
+##------ Housing ------
+
+## main spatial (within-Seattle) analysis
+sea_hous_time$time <- ifelse(sea_hous_time$Date>="2017-01-01",1,0)
+sea_hous_time$did <- sea_hous_time$time * sea_hous_time$MHA_Intensity
+
+did1 <- lm(log(Price) ~ MHA_Intensity+time+did, sea_hous_time)
+#stargazer(did1, type="text")
+
+did2 <- lm(log(Price) ~ MHA_Intensity+time+did+M_Intensity+M1_Intensity+M2_Intensity+factor(Regionname)+factor(Date), sea_hous_time)
+#stargazer(did2, type="text")
+
+
+## DID for Prices in Seattle vs Other Cities (DID is Seattle post 2019)
+# All cities
+joint_hous_time <- dplyr::bind_rows(sea_hous_time, spo_hous_time, tac_hous_time, den_hous_time, fre_hous_time, phx_hous_time, sac_hous_time)
+joint_hous_time$treat <- ifelse(joint_hous_time$City == "Seattle",1,0)
+joint_hous_time$time <- ifelse(joint_hous_time$Date>="2017-01-01",1,0)
+
+did3 <- lm(log(Price) ~ treat*time, joint_hous_time)
+#stargazer(did3, type="text")
+
+did4 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint_hous_time)
+#stargazer(did4, type="text")
+
+
+##----- Rent -------
+
+## main spatial (within-Seattle) analysis
+sea_rent_time$time <- ifelse(sea_rent_time$Date>="2017-01-01",1,0)
+sea_rent_time$did <- sea_rent_time$time * sea_rent_time$MHA_Intensity
+
+did5 <- lm(log(Rent) ~ MHA_Intensity+time+did, sea_rent_time)
+#stargazer(did5, type="text")
+
+did6 <- lm(log(Rent) ~ MHA_Intensity+time+did+M_Intensity+M1_Intensity+M2_Intensity+factor(Regionname)+factor(Date), sea_rent_time)
+#stargazer(did6, type="text")
+
+
+## DID for Prices in Seattle vs Other Cities (DID is Seattle post 2019)
+# All cities
+# remove spokane because not enough data
+joint_rent_time <- dplyr::bind_rows(sea_rent_time, tac_rent_time, den_rent_time, las_rent_time, phx_rent_time, sac_rent_time)
+joint_rent_time$treat <- ifelse(joint_rent_time$City == "Seattle",1,0)
+joint_rent_time$time <- ifelse(joint_rent_time$Date>="2017-01-01",1,0)
+
+did7 <- lm(log(Rent) ~ treat*time, joint_rent_time)
+#stargazer(did7, type="text")
+
+did8 <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), joint_rent_time)
+#stargazer(did8, type="text")
+
+
+stargazer(did1, did2, did5, did6, type="html", omit=c("Regionname", "Date"), digits=3, out="table6.html")
+
+stargazer(did3, did4, did7, did8, type="html", omit=c("Regionname", "Date"), digits=3, out="table7.html")
+```
+
+
+## DiD for MHA intensity
+Using numbers instead of intensity
+```{r}
+##------ Housing ------
+
+## main spatial (within-Seattle) analysis
+sea$time <- ifelse(sea$Date>="2019-01-01",1,0)
+sea$did <- sea$time * sea$MHA
+
+did1 <- lm(Price ~ MHA+time+did, sea)
+#stargazer(did1, type="text")
+
+did2 <- lm(Price ~ MHA+time+did+M+M1+M2+factor(Regionname)+factor(Date), sea)
+#stargazer(did2, type="text")
+
+
+##----- Rent -------
+
+## main spatial (within-Seattle) analysis
+sear$time <- ifelse(sear$Date>="2019-01-01",1,0)
+sear$did <- sear$time * sear$MHA
+
+did3 <- lm(Rent ~ MHA+time+did, sear)
+#stargazer(did5, type="text")
+
+did4 <- lm(Rent ~ MHA+time+did+M+M1+M2+factor(Regionname)+factor(Date), sear)
+#stargazer(did6, type="text")
+
+#stargazer(did1, did2, did3, did4, type="html", omit=c("Regionname", "Date"), digits=3, out="table8.html")
+
+```
+
+
+## Include 2017-19
+
+```{r}
+##------ Housing ------
+
+## main spatial (within-Seattle) analysis
+sea_hous_time$time <- ifelse(sea_hous_time$Date>="2019-01-01",1,0)
+sea_hous_time$did <- sea_hous_time$time * sea_hous_time$MHA_Intensity
+
+did1 <- lm(log(Price) ~ MHA_Intensity+time+did, sea_hous_time)
+#stargazer(did1, type="text")
+
+did2 <- lm(log(Price) ~ MHA_Intensity+time+did+M_Intensity+M1_Intensity+M2_Intensity+factor(Regionname)+factor(Date), sea_hous_time)
+#stargazer(did2, type="text")
+
+
+## DID for Prices in Seattle vs Other Cities (DID is Seattle post 2019)
+# All cities
+joint_hous_time <- dplyr::bind_rows(sea_hous_time, spo_hous_time, tac_hous_time, den_hous_time, fre_hous_time, phx_hous_time, sac_hous_time)
+joint_hous_time$treat <- ifelse(joint_hous_time$City == "Seattle",1,0)
+joint_hous_time$time <- ifelse(joint_hous_time$Date>="2019-01-01",1,0)
+
+did3 <- lm(log(Price) ~ treat*time, joint_hous_time)
+#stargazer(did3, type="text")
+
+did4 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), joint_hous_time)
+#stargazer(did4, type="text")
+
+
+##----- Rent -------
+
+## main spatial (within-Seattle) analysis
+sea_rent_time$time <- ifelse(sea_rent_time$Date>="2019-01-01",1,0)
+sea_rent_time$did <- sea_rent_time$time * sea_rent_time$MHA_Intensity
+
+did5 <- lm(log(Rent) ~ MHA_Intensity+time+did, sea_rent_time)
+#stargazer(did5, type="text")
+
+did6 <- lm(log(Rent) ~ MHA_Intensity+time+did+M_Intensity+M1_Intensity+M2_Intensity+factor(Regionname)+factor(Date), sea_rent_time)
+#stargazer(did6, type="text")
+
+
+## DID for Prices in Seattle vs Other Cities (DID is Seattle post 2019)
+# All cities
+# remove spokane because not enough data
+joint_rent_time <- dplyr::bind_rows(sea_rent_time, tac_rent_time, den_rent_time, las_rent_time, phx_rent_time, sac_rent_time)
+joint_rent_time$treat <- ifelse(joint_rent_time$City == "Seattle",1,0)
+joint_rent_time$time <- ifelse(joint_rent_time$Date>="2019-01-01",1,0)
+
+did7 <- lm(log(Rent) ~ treat*time, joint_rent_time)
+#stargazer(did7, type="text")
+
+did8 <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), joint_rent_time)
+#stargazer(did8, type="text")
+
+stargazer(did1, did2, did5, did6, type="html", omit=c("Regionname", "Date"), digits=3, out="table9.html")
+
+stargazer(did3, did4, did7, did8, type="html", omit=c("Regionname", "Date"), digits=3, out="table10.html")
+
+```
+
+
+Year hetero
+
+```{r}
+###------ Price ------
+
+sea$time <- ifelse(sea$Date>="2019-01-01",1,0)
+#sea$did <- sea$time * sea$MHA_Intensity
+sea$Y0 <- ifelse(sea$Date>="2019-01-01"&sea$Date<="2019-12-31",1,0)
+sea$Y1 <- ifelse(sea$Date>="2020-01-01"&sea$Date<="2020-12-31",1,0)
+sea$Y2 <- ifelse(sea$Date>="2021-01-01"&sea$Date<="2021-12-31",1,0)
+sea$Y3 <- ifelse(sea$Date>="2022-01-01"&sea$Date<="2022-12-31",1,0)
+sea$Y4 <- ifelse(sea$Date>="2023-01-01"&sea$Date<="2023-12-31",1,0)
+sea$didY0 <- sea$Y0 * sea$MHA_Intensity
+sea$didY1 <- sea$Y1 * sea$MHA_Intensity
+sea$didY2 <- sea$Y2 * sea$MHA_Intensity
+sea$didY3 <- sea$Y3 * sea$MHA_Intensity
+sea$didY4 <- sea$Y4 * sea$MHA_Intensity
+
+did1 <- lm(log(Price) ~ MHA_Intensity+time+didY0+didY1+didY2+didY3+didY4, sea)
+#stargazer(did1, type="text")
+
+did2 <- lm(log(Price) ~ MHA_Intensity+time+M_Intensity+M1_Intensity+M2_Intensity+didY0+didY1+didY2+didY3+didY4+factor(Regionname)+factor(Date), sea)
+#stargazer(did2, type="text")
+
+joint$treat <- ifelse(joint$City == "Seattle",1,0)
+joint$time <- ifelse(joint$Date>="2019-01-01",1,0)
+joint$Y0 <- ifelse(joint$Date>="2019-01-01"&joint$Date<="2019-12-31",1,0)
+joint$Y1 <- ifelse(joint$Date>="2020-01-01"&joint$Date<="2020-12-31",1,0)
+joint$Y2 <- ifelse(joint$Date>="2021-01-01"&joint$Date<="2021-12-31",1,0)
+joint$Y3 <- ifelse(joint$Date>="2022-01-01"&joint$Date<="2022-12-31",1,0)
+joint$Y4 <- ifelse(joint$Date>="2023-01-01"&joint$Date<="2023-12-31",1,0)
+joint$didY0 <- joint$treat * joint$Y0
+joint$didY1 <- joint$treat * joint$Y1
+joint$didY2 <- joint$treat * joint$Y2
+joint$didY3 <- joint$treat * joint$Y3
+joint$didY4 <- joint$treat * joint$Y4
+
+
+did3 <- lm(log(Price) ~ treat+time+didY0+didY1+didY2+didY3+didY4, joint)
+#stargazer(did3, type="text")
+
+did4 <- lm(log(Price) ~ treat+time+didY0+didY1+didY2+didY3+didY4+factor(Regionname)+factor(Date), joint)
+#stargazer(did4, type="text")
+
+
+###------- Rent -------
+
+sear$time <- ifelse(sear$Date>="2019-01-01",1,0)
+sear$did <- sear$time * sear$MHA_Intensity
+sear$Y0 <- ifelse(sear$Date>="2019-01-01"&sear$Date<="2019-12-31",1,0)
+sear$Y1 <- ifelse(sear$Date>="2020-01-01"&sear$Date<="2020-12-31",1,0)
+sear$Y2 <- ifelse(sear$Date>="2021-01-01"&sear$Date<="2021-12-31",1,0)
+sear$Y3 <- ifelse(sear$Date>="2022-01-01"&sear$Date<="2022-12-31",1,0)
+sear$Y4 <- ifelse(sear$Date>="2023-01-01"&sear$Date<="2023-12-31",1,0)
+sear$didY0 <- sear$MHA_Intensity * sear$Y0
+sear$didY1 <- sear$MHA_Intensity * sear$Y1
+sear$didY2 <- sear$MHA_Intensity * sear$Y2
+sear$didY3 <- sear$MHA_Intensity * sear$Y3
+sear$didY4 <- sear$MHA_Intensity * sear$Y4
+
+
+did5 <- lm(log(Rent) ~ MHA_Intensity+time+didY0+didY1+didY2+didY3+didY4, sear)
+#stargazer(did1, type="text")
+
+did6 <- lm(log(Rent) ~ MHA_Intensity+time+M_Intensity+M1_Intensity+M2_Intensity+didY0+didY1+didY2+didY3+didY4+factor(Regionname)+factor(Date), sear)
+#stargazer(did2, type="text")
+
+
+jointr$treat <- ifelse(jointr$City == "Seattle",1,0)
+jointr$time <- ifelse(jointr$Date>="2019-01-01",1,0)
+jointr$Y0 <- ifelse(jointr$Date>="2019-01-01"&jointr$Date<="2019-12-31",1,0)
+jointr$Y1 <- ifelse(jointr$Date>="2020-01-01"&jointr$Date<="2020-12-31",1,0)
+jointr$Y2 <- ifelse(jointr$Date>="2021-01-01"&jointr$Date<="2021-12-31",1,0)
+jointr$Y3 <- ifelse(jointr$Date>="2022-01-01"&jointr$Date<="2022-12-31",1,0)
+jointr$Y4 <- ifelse(jointr$Date>="2023-01-01"&jointr$Date<="2023-12-31",1,0)
+jointr$didY0 <- jointr$treat * jointr$Y0
+jointr$didY1 <- jointr$treat * jointr$Y1
+jointr$didY2 <- jointr$treat * jointr$Y2
+jointr$didY3 <- jointr$treat * jointr$Y3
+jointr$didY4 <- jointr$treat * jointr$Y4
+
+did7 <- lm(log(Rent) ~ treat+time+didY0+didY1+didY2+didY3+didY4, jointr)
+#stargazer(did7, type="text")
+
+did8 <- lm(log(Rent) ~ treat+time+didY0+didY1+didY2+didY3+didY4+factor(Regionname)+factor(Date), jointr)
+#stargazer(did8, type="text")
+
+#stargazer(did1, did2, did5, did6, type="html", omit=c("Regionname", "Date"), digits=3, out="table11.html")
+
+
+#stargazer(did3, did4, did7, did8, type="html", omit=c("Regionname", "Date"), digits=3, out="table12.html")
+```
+
+
+## Drop one city at a time
+#### Housing
+```{r}
+###------ Housing ------
+
+## Spokane
+no_spo <- dplyr::bind_rows(sea, tac, den, fre, phx, sac)
+no_spo$treat <- ifelse(no_spo$City == "Seattle",1,0)
+no_spo$time <- ifelse(no_spo$Date>="2019-01-01",1,0)
+
+did_spo <- lm(log(Price) ~ treat*time, no_spo)
+#stargazer(did_spo, type="text")
+
+did_spo1 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), no_spo)
+#stargazer(did_spo1, type="text")
+
+## Tacoma
+no_tac <- dplyr::bind_rows(sea, spo, den, fre, phx, sac)
+no_tac$treat <- ifelse(no_tac$City == "Seattle",1,0)
+no_tac$time <- ifelse(no_tac$Date>="2019-01-01",1,0)
+
+did_tac <- lm(log(Price) ~ treat*time, no_tac)
+#stargazer(did_tac, type="text")
+
+did_tac1 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), no_tac)
+#stargazer(did_tac1, type="text")
+
+## Denver
+no_den <- dplyr::bind_rows(sea, spo, tac, fre, phx, sac)
+no_den$treat <- ifelse(no_den$City == "Seattle",1,0)
+no_den$time <- ifelse(no_den$Date>="2019-01-01",1,0)
+
+did_den <- lm(log(Price) ~ treat*time, no_den)
+#stargazer(did_den, type="text")
+
+did_den1 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), no_den)
+#stargazer(did_den1, type="text")
+
+## Fremont
+no_fre <- dplyr::bind_rows(sea, spo, tac, den, phx, sac)
+no_fre$treat <- ifelse(no_fre$City == "Seattle",1,0)
+no_fre$time <- ifelse(no_fre$Date>="2019-01-01",1,0)
+
+did_fre <- lm(log(Price) ~ treat*time, no_fre)
+#stargazer(did_fre, type="text")
+
+did_fre1 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), no_fre)
+#stargazer(did_fre1, type="text")
+
+## Phoenix
+no_phx <- dplyr::bind_rows(sea, spo, tac, den, fre, sac)
+no_phx$treat <- ifelse(no_phx$City == "Seattle",1,0)
+no_phx$time <- ifelse(no_phx$Date>="2019-01-01",1,0)
+
+did_phx <- lm(log(Price) ~ treat*time, no_phx)
+#stargazer(did_phx, type="text")
+
+did_phx1 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), no_phx)
+#stargazer(did_phx1, type="text")
+
+## Sacramento
+no_sac <- dplyr::bind_rows(sea, spo, tac, den, fre, phx)
+no_sac$treat <- ifelse(no_sac$City == "Seattle",1,0)
+no_sac$time <- ifelse(no_sac$Date>="2019-01-01",1,0)
+
+did_sac <- lm(log(Price) ~ treat*time, no_sac)
+#stargazer(did_sac, type="text")
+
+did_sac1 <- lm(log(Price) ~ treat*time+factor(Regionname)+factor(Date), no_sac)
+#stargazer(did_sac1, type="text")
+
+
+stargazer(did_spo1, did_tac1, did_den1, did_fre1, did_phx1, did_sac1, type="html", omit=c("Regionname", "Date"), digits=3, out="table13.html")
+
+```
+
+#### Rent
+
+```{r}
+###------ Rent ------
+
+## Tacoma
+no_tacr <- dplyr::bind_rows(sear, denr, phxr, lasr, sacr)
+no_tacr$treat <- ifelse(no_tacr$City == "Seattle",1,0)
+no_tacr$time <- ifelse(no_tacr$Date>="2019-01-01",1,0)
+
+did_tacr <- lm(log(Rent) ~ treat*time, no_tacr)
+#stargazer(did_tacr, type="text")
+
+did_tacr1 <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), no_tacr)
+#stargazer(did_tacr1, type="text")
+
+## Denver
+no_denr <- dplyr::bind_rows(sear, tacr, phxr, lasr, sacr)
+no_denr$treat <- ifelse(no_denr$City == "Seattle",1,0)
+no_denr$time <- ifelse(no_denr$Date>="2019-01-01",1,0)
+
+did_denr <- lm(log(Rent) ~ treat*time, no_denr)
+#stargazer(did_denr, type="text")
+
+did_denr1 <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), no_denr)
+#stargazer(did_denr1, type="text")
+
+## Phoenix
+no_phxr <- dplyr::bind_rows(sear, tacr, denr, lasr, sacr)
+no_phxr$treat <- ifelse(no_phxr$City == "Seattle",1,0)
+no_phxr$time <- ifelse(no_phxr$Date>="2019-01-01",1,0)
+
+did_phxr <- lm(log(Rent) ~ treat*time, no_phxr)
+#stargazer(did_phxr, type="text")
+
+did_phxr1 <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), no_phxr)
+#stargazer(did_phxr1, type="text")
+
+## Las Vegas
+no_lasr <- dplyr::bind_rows(sear, tacr, denr, phxr, sacr)
+no_lasr$treat <- ifelse(no_lasr$City == "Seattle",1,0)
+no_lasr$time <- ifelse(no_lasr$Date>="2019-01-01",1,0)
+
+did_lasr <- lm(log(Rent) ~ treat*time, no_lasr)
+#stargazer(did_lasr, type="text")
+
+did_lasr1 <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), no_lasr)
+#stargazer(did_lasr1, type="text")
+
+## Sacramento
+no_sacr <- dplyr::bind_rows(sear, tacr, denr, phxr, lasr)
+no_sacr$treat <- ifelse(no_sacr$City == "Seattle",1,0)
+no_sacr$time <- ifelse(no_sacr$Date>="2019-01-01",1,0)
+
+did_sacr <- lm(log(Rent) ~ treat*time, no_sacr)
+#stargazer(did_sacr, type="text")
+
+did_sacr1 <- lm(log(Rent) ~ treat*time+factor(Regionname)+factor(Date), no_sacr)
+#stargazer(did_sacr1, type="text")
+
+
+stargazer(did_tacr1, did_denr1, did_phxr1, did_lasr1, did_sacr1, type="html", omit=c("Regionname", "Date"), digits=3, out="table14.html")
+
+```
+
+
+
+
+
